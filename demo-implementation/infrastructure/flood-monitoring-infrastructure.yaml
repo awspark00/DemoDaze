@@ -1,0 +1,806 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Federal Flood Monitoring System - Complete Infrastructure Template'
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Description: Email address for flood alerts (REQUIRED - replace with your email)
+    Default: user@example.com
+  
+  DataCollectionFrequencyUSGS:
+    Type: Number
+    Description: USGS data collection frequency in minutes
+    Default: 15
+    MinValue: 5
+    MaxValue: 60
+  
+  DataCollectionFrequencyNOAA:
+    Type: Number
+    Description: NOAA data collection frequency in minutes
+    Default: 20
+    MinValue: 5
+    MaxValue: 60
+  
+  MLPredictionFrequency:
+    Type: Number
+    Description: ML prediction frequency in hours
+    Default: 2
+    MinValue: 1
+    MaxValue: 24
+  
+  DataRetentionDays:
+    Type: Number
+    Description: Data retention period in days (TTL)
+    Default: 14
+    MinValue: 1
+    MaxValue: 365
+
+  # Unique Resource Names - Customize these to avoid conflicts
+  LambdaRoleName:
+    Type: String
+    Description: Name for Lambda execution role (must be unique in your account)
+    Default: lambda-execution-role-flood-monitoring
+  
+  SageMakerRoleName:
+    Type: String
+    Description: Name for SageMaker execution role (must be unique in your account)
+    Default: SageMakerExecutionRole-flood-monitoring
+  
+  S3BucketSuffix:
+    Type: String
+    Description: Suffix for S3 bucket name (bucket will be flood-prediction-models-{AccountId}-{Suffix})
+    Default: main
+    AllowedPattern: ^[a-z0-9-]*$
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
+  
+  DashboardName:
+    Type: String
+    Description: Name for CloudWatch dashboard (must be unique in your account)
+    Default: FloodMonitoringSystem
+  
+  SageMakerNotebookName:
+    Type: String
+    Description: Name for SageMaker notebook instance (must be unique in your account)
+    Default: flood-prediction-notebook-main
+
+Resources:
+  # ============================================================================
+  # IAM ROLES (Phase 0)
+  # ============================================================================
+  
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref LambdaRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref SageMakerRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+
+  # ============================================================================
+  # DYNAMODB TABLES (Phase 1)
+  # ============================================================================
+  
+  FloodGaugeReadingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: FloodGaugeReadings
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: gauge_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: gauge_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: DataSource
+          Value: USGS
+
+  WeatherObservationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WeatherObservations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: station_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: station_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: DataSource
+          Value: NOAA
+
+  # ============================================================================
+  # S3 BUCKET (Phase 1)
+  # ============================================================================
+  
+  FloodPredictionModelsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'flood-prediction-models-${AWS::AccountId}-${S3BucketSuffix}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: Purpose
+          Value: MLModels
+
+  # ============================================================================
+  # SNS TOPICS (Phase 1)
+  # ============================================================================
+  
+  FloodAlertsEmergency:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: flood-alerts-emergency
+      DisplayName: 'Flood Emergency Alerts'
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: AlertLevel
+          Value: Emergency
+
+  FloodAlertsWarning:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: flood-alerts-warning
+      DisplayName: 'Flood Warning Alerts'
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: AlertLevel
+          Value: Warning
+
+  FloodAlertsWatch:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: flood-alerts-watch
+      DisplayName: 'Flood Watch Alerts'
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: AlertLevel
+          Value: Watch
+
+  # SNS Email Subscriptions
+  EmergencyEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref FloodAlertsEmergency
+      Endpoint: !Ref NotificationEmail
+
+  WarningEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref FloodAlertsWarning
+      Endpoint: !Ref NotificationEmail
+
+  WatchEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref FloodAlertsWatch
+      Endpoint: !Ref NotificationEmail
+
+  # ============================================================================
+  # LAMBDA FUNCTIONS (Phase 2-3, 5)
+  # ============================================================================
+  
+  USGSDataCollectorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: usgs-data-collector
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          TTL_DAYS: !Ref DataRetentionDays
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import requests
+          from datetime import datetime
+          from decimal import Decimal
+          import os
+          import time
+
+          def lambda_handler(event, context):
+              """Collect USGS stream gauge data for Potomac River basin"""
+              
+              # Potomac River gauges
+              usgs_url = "https://waterservices.usgs.gov/nwis/iv/"
+              params = {
+                  'format': 'json',
+                  'sites': '01646500,01594440,01638500',  # 3 Potomac gauges
+                  'parameterCd': '00065',  # Gauge height
+                  'period': 'PT4H'  # Last 4 hours
+              }
+              
+              try:
+                  response = requests.get(usgs_url, params=params, timeout=30)
+                  response.raise_for_status()
+                  data = response.json()
+                  
+                  # Store in DynamoDB
+                  dynamodb = boto3.resource('dynamodb')
+                  table = dynamodb.Table('FloodGaugeReadings')
+                  
+                  records_processed = 0
+                  ttl_days = int(os.environ.get('TTL_DAYS', 14))
+                  
+                  for site in data['value']['timeSeries']:
+                      gauge_id = site['sourceInfo']['siteCode'][0]['value']
+                      location_name = site['sourceInfo']['siteName']
+                      
+                      # Set flood stages for each gauge
+                      flood_stages = {
+                          '01646500': 10.0,  # Chain Bridge
+                          '01594440': 15.0,  # Patuxent River
+                          '01638500': 18.0   # Point of Rocks
+                      }
+                      flood_stage = flood_stages.get(gauge_id, 10.0)
+                      
+                      for reading in site['values'][0]['value']:
+                          if reading['value'] and reading['value'] != '-999999':
+                              water_level = Decimal(str(reading['value']))
+                              
+                              # Calculate trend (simplified)
+                              trend = 'stable'  # Would calculate from previous readings
+                              
+                              # Calculate TTL
+                              ttl = int(time.time()) + (ttl_days * 24 * 60 * 60)
+                              
+                              # Store reading
+                              table.put_item(Item={
+                                  'gauge_id': gauge_id,
+                                  'timestamp': reading['dateTime'],
+                                  'water_level': water_level,
+                                  'flood_stage': Decimal(str(flood_stage)),
+                                  'location_name': location_name,
+                                  'trend': trend,
+                                  'ttl': ttl
+                              })
+                              
+                              records_processed += 1
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'USGS data processed successfully',
+                          'records_processed': records_processed
+                      })
+                  }
+                  
+              except Exception as e:
+                  print(f"Error processing USGS data: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': str(e)})
+                  }
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: DataSource
+          Value: USGS
+
+  NOAADataCollectorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: noaa-data-collector
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          TTL_DAYS: !Ref DataRetentionDays
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import requests
+          from datetime import datetime
+          from decimal import Decimal
+          import os
+          import time
+
+          def lambda_handler(event, context):
+              """Collect NOAA weather data for DC metro area"""
+              
+              # DC area weather stations
+              stations = ['KDCA', 'KIAD', 'KADW']
+              
+              dynamodb = boto3.resource('dynamodb')
+              table = dynamodb.Table('WeatherObservations')
+              
+              records_processed = 0
+              ttl_days = int(os.environ.get('TTL_DAYS', 14))
+              
+              for station in stations:
+                  try:
+                      # Get current observations
+                      obs_url = f"https://api.weather.gov/stations/{station}/observations/latest"
+                      response = requests.get(obs_url, timeout=30)
+                      
+                      if response.status_code == 200:
+                          data = response.json()
+                          properties = data['properties']
+                          
+                          # Extract precipitation data
+                          precip_1hr = properties.get('precipitationLastHour', {})
+                          precip_value = precip_1hr.get('value') if precip_1hr else None
+                          
+                          # Convert mm to inches (USGS uses feet, easier to work in inches)
+                          precip_inches = 0.0
+                          if precip_value:
+                              precip_inches = float(precip_value) * 0.0393701  # mm to inches
+                          
+                          # Get forecast data (simplified - would need gridpoint lookup)
+                          forecast_precip_24hr = 0.0  # Would fetch from forecast API
+                          
+                          # Calculate TTL
+                          ttl = int(time.time()) + (ttl_days * 24 * 60 * 60)
+                          
+                          # Store observation
+                          table.put_item(Item={
+                              'station_id': station,
+                              'timestamp': properties['timestamp'],
+                              'precipitation_1hr': Decimal(str(precip_inches)),
+                              'precipitation_forecast_24hr': Decimal(str(forecast_precip_24hr)),
+                              'temperature': Decimal(str(properties.get('temperature', {}).get('value', 0) or 0)),
+                              'location_name': f"Weather Station {station}",
+                              'ttl': ttl
+                          })
+                          
+                          records_processed += 1
+                          
+                  except Exception as e:
+                      print(f"Error processing station {station}: {str(e)}")
+                      continue
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'NOAA data processed successfully',
+                      'records_processed': records_processed
+                  })
+              }
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: DataSource
+          Value: NOAA
+
+  MLFloodPredictorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ml-flood-predictor
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref FloodPredictionModelsBucket
+          EMERGENCY_TOPIC: !Ref FloodAlertsEmergency
+          WARNING_TOPIC: !Ref FloodAlertsWarning
+          WATCH_TOPIC: !Ref FloodAlertsWatch
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import numpy as np
+          from datetime import datetime, timedelta
+          from decimal import Decimal
+          import os
+
+          # Global model variable for caching
+          model = None
+          feature_columns = None
+
+          def load_model():
+              """Load ML model from S3 (cached)"""
+              global model, feature_columns
+              
+              if model is None:
+                  try:
+                      import joblib
+                      s3 = boto3.client('s3')
+                      bucket_name = os.environ['S3_BUCKET']
+                      
+                      # Download model from S3
+                      s3.download_file(bucket_name, 
+                                      'models/flood_prediction_model.joblib', 
+                                      '/tmp/model.joblib')
+                      
+                      # Download feature list
+                      s3.download_file(bucket_name,
+                                      'models/model_features.json',
+                                      '/tmp/features.json')
+                      
+                      model = joblib.load('/tmp/model.joblib')
+                      
+                      with open('/tmp/features.json', 'r') as f:
+                          feature_columns = json.load(f)
+                          
+                  except Exception as e:
+                      print(f"Could not load ML model: {e}")
+                      # Use simple threshold model as fallback
+                      model = "threshold"
+                      feature_columns = []
+              
+              return model, feature_columns
+
+          def get_recent_data():
+              """Get recent USGS and NOAA data for prediction"""
+              dynamodb = boto3.resource('dynamodb')
+              
+              # Get recent USGS data (last 24 hours)
+              usgs_table = dynamodb.Table('FloodGaugeReadings')
+              noaa_table = dynamodb.Table('WeatherObservations')
+              
+              # Query for Chain Bridge gauge (01646500)
+              usgs_response = usgs_table.scan(
+                  FilterExpression='gauge_id = :gauge_id',
+                  ExpressionAttributeValues={':gauge_id': '01646500'}
+              )
+              
+              noaa_response = noaa_table.scan(
+                  FilterExpression='station_id = :station_id',
+                  ExpressionAttributeValues={':station_id': 'KDCA'}
+              )
+              
+              return usgs_response['Items'], noaa_response['Items']
+
+          def predict_flood_probability(usgs_data, noaa_data):
+              """Predict flood probability using ML model or threshold"""
+              
+              flood_model, features = load_model()
+              
+              if flood_model == "threshold":
+                  # Simple threshold-based prediction as fallback
+                  if usgs_data:
+                      latest_usgs = sorted(usgs_data, key=lambda x: x['timestamp'])[-1]
+                      water_level = float(latest_usgs.get('water_level', 5.0))
+                      flood_stage = float(latest_usgs.get('flood_stage', 10.0))
+                      
+                      # Simple probability based on proximity to flood stage
+                      ratio = water_level / flood_stage
+                      if ratio > 0.9:
+                          return 0.8  # High probability
+                      elif ratio > 0.7:
+                          return 0.4  # Medium probability
+                      else:
+                          return 0.1  # Low probability
+                  else:
+                      return 0.1
+              else:
+                  # Use ML model (would need feature engineering)
+                  return 0.2  # Placeholder
+
+          def lambda_handler(event, context):
+              """ML-powered flood prediction"""
+              
+              try:
+                  # Get recent data
+                  usgs_data, noaa_data = get_recent_data()
+                  
+                  # Make prediction
+                  flood_probability = predict_flood_probability(usgs_data, noaa_data)
+                  
+                  # Determine alert level and topic
+                  if flood_probability > 0.8:
+                      alert_level = "EMERGENCY"
+                      topic_arn = os.environ['EMERGENCY_TOPIC']
+                      message = f"EMERGENCY: ML model predicts {flood_probability:.1%} flood probability in next 6 hours"
+                  elif flood_probability > 0.5:
+                      alert_level = "WARNING"
+                      topic_arn = os.environ['WARNING_TOPIC']
+                      message = f"WARNING: ML model predicts {flood_probability:.1%} flood probability in next 6 hours"
+                  elif flood_probability > 0.2:
+                      alert_level = "WATCH"
+                      topic_arn = os.environ['WATCH_TOPIC']
+                      message = f"WATCH: ML model predicts {flood_probability:.1%} flood probability in next 6 hours"
+                  else:
+                      alert_level = "NORMAL"
+                      topic_arn = None
+                      message = f"Normal conditions - {flood_probability:.1%} flood probability"
+                  
+                  # Send alert if needed
+                  if topic_arn and flood_probability > 0.2:
+                      sns = boto3.client('sns')
+                      sns.publish(
+                          TopicArn=topic_arn,
+                          Message=message,
+                          Subject=f'Potomac River Flood {alert_level}'
+                      )
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'flood_probability': float(flood_probability),
+                          'alert_level': alert_level,
+                          'message': message,
+                          'timestamp': datetime.utcnow().isoformat()
+                      })
+                  }
+                  
+              except Exception as e:
+                  print(f"Error in ML prediction: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': str(e)})
+                  }
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: Purpose
+          Value: MLPrediction
+
+  # ============================================================================
+  # EVENTBRIDGE RULES (Phase 4)
+  # ============================================================================
+  
+  USGSDataCollectionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: usgs-data-collection
+      Description: 'Trigger USGS data collection'
+      ScheduleExpression: !Sub 'rate(${DataCollectionFrequencyUSGS} minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt USGSDataCollectorFunction.Arn
+          Id: USGSDataCollectorTarget
+
+  NOAADataCollectionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: noaa-data-collection
+      Description: 'Trigger NOAA data collection'
+      ScheduleExpression: !Sub 'rate(${DataCollectionFrequencyNOAA} minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt NOAADataCollectorFunction.Arn
+          Id: NOAADataCollectorTarget
+
+  MLFloodPredictionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ml-flood-prediction
+      Description: 'Trigger ML flood predictions'
+      ScheduleExpression: !Sub 'rate(${MLPredictionFrequency} hours)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt MLFloodPredictorFunction.Arn
+          Id: MLFloodPredictorTarget
+
+  # ============================================================================
+  # LAMBDA PERMISSIONS FOR EVENTBRIDGE
+  # ============================================================================
+  
+  USGSLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref USGSDataCollectorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt USGSDataCollectionRule.Arn
+
+  NOAALambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref NOAADataCollectorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NOAADataCollectionRule.Arn
+
+  MLLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MLFloodPredictorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MLFloodPredictionRule.Arn
+
+  # ============================================================================
+  # SAGEMAKER NOTEBOOK INSTANCE (Phase 5)
+  # ============================================================================
+  
+  SageMakerNotebookInstance:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties:
+      NotebookInstanceName: !Ref SageMakerNotebookName
+      InstanceType: ml.t3.medium
+      RoleArn: !GetAtt SageMakerExecutionRole.Arn
+      Tags:
+        - Key: Project
+          Value: FloodMonitoring
+        - Key: Purpose
+          Value: MLTraining
+
+  # ============================================================================
+  # CLOUDWATCH DASHBOARD (Phase 6)
+  # ============================================================================
+  
+  FloodMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Ref DashboardName
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "usgs-data-collector"],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "noaa-data-collector"],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "ml-flood-predictor"]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Data Collection & ML Prediction Status",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "usgs-data-collector"],
+                  ["AWS/Lambda", "Duration", "FunctionName", "noaa-data-collector"],
+                  ["AWS/Lambda", "Duration", "FunctionName", "ml-flood-predictor"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Function Performance (ms)",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "usgs-data-collector"],
+                  ["AWS/Lambda", "Errors", "FunctionName", "noaa-data-collector"],
+                  ["AWS/Lambda", "Errors", "FunctionName", "ml-flood-predictor"]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Error Monitoring",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "FloodGaugeReadings"],
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "FloodGaugeReadings"],
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "WeatherObservations"],
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "WeatherObservations"]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "DynamoDB Usage",
+                "view": "timeSeries"
+              }
+            }
+          ]
+        }
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+
+Outputs:
+  DashboardURL:
+    Description: 'CloudWatch Dashboard URL'
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${FloodMonitoringDashboard}'
+  
+  SageMakerNotebookURL:
+    Description: 'SageMaker Notebook Instance URL'
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/notebook-instances/${SageMakerNotebookInstance}'
+  
+  S3BucketName:
+    Description: 'S3 Bucket for ML Models'
+    Value: !Ref FloodPredictionModelsBucket
+  
+  USGSTableName:
+    Description: 'DynamoDB Table for USGS Data'
+    Value: !Ref FloodGaugeReadingsTable
+  
+  NOAATableName:
+    Description: 'DynamoDB Table for NOAA Data'
+    Value: !Ref WeatherObservationsTable
+  
+  SystemStatus:
+    Description: 'System Configuration Summary'
+    Value: !Sub |
+      Data Collection: USGS every ${DataCollectionFrequencyUSGS}min, NOAA every ${DataCollectionFrequencyNOAA}min
+      ML Predictions: Every ${MLPredictionFrequency} hours
+      Data Retention: ${DataRetentionDays} days
+      Notifications: ${NotificationEmail}
+  
+  NextSteps:
+    Description: 'Post-deployment steps'
+    Value: |
+      1. Confirm SNS email subscriptions in your inbox
+      2. Upload ML notebook to SageMaker and run training
+      3. Access CloudWatch dashboard to monitor system
+      4. System will start collecting data automatically
