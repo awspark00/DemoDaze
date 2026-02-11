@@ -64,6 +64,7 @@ logs/
 *.temp
 temp/
 tmp/
+response.json
 
 # CloudFormation
 *.zip
