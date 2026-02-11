@@ -109,7 +109,7 @@ def trigger_ml_predictor():
     
     try:
         response = lambda_client.invoke(
-            FunctionName='MLFloodPredictor',
+            FunctionName='ml-flood-predictor',
             InvocationType='RequestResponse',
             Payload=json.dumps({})
         )
