@@ -58,60 +58,37 @@ def lambda_handler(event, context):
 def inject_demo_data(water_level):
     """Inject simulated high water level data into DynamoDB"""
     
-    dynamodb = boto3.resource('dynamodb')
-    gauge_table = dynamodb.Table('FloodGaugeReadings')
-    weather_table = dynamodb.Table('WeatherObservations')
+    # For demo mode, we don't actually inject data into DynamoDB
+    # Instead, we'll pass demo parameters to the ML predictor
+    # This keeps real data intact for showcase purposes
     
-    # Calculate TTL (14 days from now)
-    ttl = int(time.time()) + (14 * 24 * 60 * 60)
-    current_time = datetime.utcnow().isoformat() + 'Z'
-    
-    # Inject HIGH water level for Chain Bridge gauge (01646500)
-    demo_gauge_data = {
-        'gauge_id': '01646500',
-        'timestamp': current_time,
-        'water_level': Decimal(str(water_level)),
-        'flood_stage': Decimal('10.0'),
-        'location_name': 'POTOMAC RIVER NEAR WASH, DC LITTLE FALLS PUMP STA',
-        'trend': 'rising',
-        'ttl': ttl
-    }
-    
-    gauge_table.put_item(Item=demo_gauge_data)
-    
-    # Inject precipitation data
-    demo_weather_data = {
-        'station_id': 'KDCA',
-        'timestamp': current_time,
-        'precipitation_1hr': Decimal('0.5'),
-        'precipitation_forecast_24hr': Decimal('2.0'),
-        'temperature': Decimal('15.0'),
-        'location_name': 'Weather Station KDCA',
-        'ttl': ttl
-    }
-    
-    weather_table.put_item(Item=demo_weather_data)
-    
-    print(f"Injected demo data - Water Level: {water_level} feet ({(water_level/10.0)*100:.0f}% of flood stage)")
+    print(f"Demo Mode - Simulating Water Level: {water_level} feet ({(water_level/10.0)*100:.0f}% of flood stage)")
     
     return {
         'gauge_id': '01646500',
-        'timestamp': current_time,
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
         'water_level': float(water_level),
         'flood_stage': 10.0,
         'ratio': (water_level / 10.0) * 100
     }
 
 def trigger_ml_predictor():
-    """Trigger the ML Flood Predictor Lambda"""
+    """Trigger the ML Flood Predictor Lambda in DEMO MODE"""
     
     lambda_client = boto3.client('lambda')
     
     try:
+        # Pass demo_mode flag to ML predictor with simulated water level
+        demo_payload = {
+            'demo_mode': True,
+            'demo_water_level': 8.5,  # 85% of flood stage
+            'demo_flood_stage': 10.0
+        }
+        
         response = lambda_client.invoke(
             FunctionName='ml-flood-predictor',
             InvocationType='RequestResponse',
-            Payload=json.dumps({})
+            Payload=json.dumps(demo_payload)
         )
         
         result = json.loads(response['Payload'].read())

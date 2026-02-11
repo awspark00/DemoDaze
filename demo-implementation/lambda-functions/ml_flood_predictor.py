@@ -6,8 +6,14 @@ Uses machine learning to predict flood probability
 
 import json
 import boto3
-import numpy as np
 from datetime import datetime, timedelta
+import os
+
+# Import numpy only when needed (not for demo mode)
+try:
+    import numpy as np
+except ImportError:
+    np = None
 from decimal import Decimal
 
 # Global model variable for caching
@@ -140,7 +146,60 @@ def lambda_handler(event, context):
     """ML-powered flood prediction"""
     
     try:
-        # Get recent data
+        # Check if this is demo mode
+        if event.get('demo_mode'):
+            print("DEMO MODE ACTIVATED")
+            demo_water_level = event.get('demo_water_level', 8.5)
+            demo_flood_stage = event.get('demo_flood_stage', 10.0)
+            
+            # Calculate demo prediction
+            ratio = demo_water_level / demo_flood_stage
+            if ratio > 0.9:
+                flood_probability = 0.8
+                alert_level = "EMERGENCY"
+            elif ratio > 0.7:
+                flood_probability = 0.4
+                alert_level = "WARNING"
+            else:
+                flood_probability = 0.1
+                alert_level = "NORMAL"
+            
+            message = f"{alert_level}: Demo simulation shows {flood_probability:.1%} flood probability with water level at {demo_water_level} feet ({ratio*100:.0f}% of flood stage)"
+            
+            # Determine SNS topic for demo
+            if flood_probability > 0.8:
+                topic_arn = os.environ.get('EMERGENCY_TOPIC')
+            elif flood_probability > 0.5:
+                topic_arn = os.environ.get('WARNING_TOPIC')
+            elif flood_probability > 0.2:
+                topic_arn = os.environ.get('WATCH_TOPIC')
+            else:
+                topic_arn = None
+            
+            # Send alert if needed (for demo, we'll send it)
+            if topic_arn and flood_probability > 0.2:
+                sns = boto3.client('sns')
+                sns.publish(
+                    TopicArn=topic_arn,
+                    Message=message,
+                    Subject=f'[DEMO] Potomac River Flood {alert_level}'
+                )
+                print(f"Demo alert sent to SNS: {alert_level}")
+            
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'demo_mode': True,
+                    'flood_probability': float(flood_probability),
+                    'alert_level': alert_level,
+                    'message': message,
+                    'demo_water_level': demo_water_level,
+                    'demo_flood_stage': demo_flood_stage,
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+            }
+        
+        # Normal mode - get recent data
         usgs_data, noaa_data = get_recent_data()
         
         # Make prediction
