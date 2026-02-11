@@ -22,8 +22,8 @@ def inject_demo_data():
     print("DEMO MODE: Injecting High Water Level Data")
     print("=" * 70)
     
-    # Calculate TTL (14 days from now)
-    ttl = int(time.time()) + (14 * 24 * 60 * 60)
+    # Calculate TTL (2 days from now)
+    ttl = int(time.time()) + (2 * 24 * 60 * 60)
     
     # Inject HIGH water level for Chain Bridge gauge (01646500)
     # Normal flood stage is 10.0 feet, we'll inject 8.5 feet (85% - triggers WARNING)

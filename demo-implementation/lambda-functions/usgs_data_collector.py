@@ -65,9 +65,9 @@ def lambda_handler(event, context):
                         # Calculate trend (simplified)
                         trend = 'stable'  # Would calculate from previous readings
                         
-                        # Calculate TTL (14 days from now - optimized for fast collection)
+                        # Calculate TTL (2 days from now)
                         import time
-                        ttl = int(time.time()) + (14 * 24 * 60 * 60)  # 14 days in seconds
+                        ttl = int(time.time()) + (2 * 24 * 60 * 60)  # 2 days in seconds
                         
                         # Store reading
                         table.put_item(Item={

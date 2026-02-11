@@ -9,42 +9,34 @@ import json
 import boto3
 from datetime import datetime
 from decimal import Decimal
-import time
 
 def lambda_handler(event, context):
     """
-    Trigger demo workflow by injecting simulated high water level data
+    Trigger demo workflow with simulated high water level data
+    
+    NOTE: This does NOT write to DynamoDB - it passes demo data directly to ML predictor
+    This preserves real monitoring data for showcase purposes
     
     Parameters in event (optional):
     - water_level: float (default 8.5) - Water level in feet
-    - cleanup: bool (default False) - Whether to clean up demo data after
     """
     
     # Get parameters from event or use defaults
     water_level = event.get('water_level', 8.5)
-    cleanup = event.get('cleanup', False)
     
     try:
-        # Step 1: Inject demo data
-        inject_result = inject_demo_data(water_level)
+        # Step 1: Prepare demo data (logging only, no DynamoDB write)
+        demo_info = prepare_demo_data(water_level)
         
-        # Wait for data to propagate
-        time.sleep(2)
-        
-        # Step 2: Trigger ML predictor
-        prediction_result = trigger_ml_predictor()
-        
-        # Step 3: Optional cleanup
-        if cleanup:
-            cleanup_demo_data(inject_result['timestamp'])
+        # Step 2: Trigger ML predictor with demo mode
+        prediction_result = trigger_ml_predictor(water_level)
         
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Demo workflow triggered successfully',
-                'injected_data': inject_result,
-                'prediction': prediction_result,
-                'cleanup_performed': cleanup
+                'demo_info': demo_info,
+                'prediction': prediction_result
             })
         }
         
@@ -55,12 +47,8 @@ def lambda_handler(event, context):
             'body': json.dumps({'error': str(e)})
         }
 
-def inject_demo_data(water_level):
-    """Inject simulated high water level data into DynamoDB"""
-    
-    # For demo mode, we don't actually inject data into DynamoDB
-    # Instead, we'll pass demo parameters to the ML predictor
-    # This keeps real data intact for showcase purposes
+def prepare_demo_data(water_level):
+    """Prepare demo data parameters (does NOT write to DynamoDB)"""
     
     print(f"Demo Mode - Simulating Water Level: {water_level} feet ({(water_level/10.0)*100:.0f}% of flood stage)")
     
@@ -72,7 +60,7 @@ def inject_demo_data(water_level):
         'ratio': (water_level / 10.0) * 100
     }
 
-def trigger_ml_predictor():
+def trigger_ml_predictor(water_level):
     """Trigger the ML Flood Predictor Lambda in DEMO MODE"""
     
     lambda_client = boto3.client('lambda')
@@ -81,7 +69,7 @@ def trigger_ml_predictor():
         # Pass demo_mode flag to ML predictor with simulated water level
         demo_payload = {
             'demo_mode': True,
-            'demo_water_level': 8.5,  # 85% of flood stage
+            'demo_water_level': water_level,
             'demo_flood_stage': 10.0
         }
         
@@ -103,33 +91,3 @@ def trigger_ml_predictor():
     except Exception as e:
         print(f"Error invoking ML Predictor: {e}")
         return {'error': str(e)}
-
-def cleanup_demo_data(timestamp):
-    """Remove demo data after testing"""
-    
-    try:
-        dynamodb = boto3.resource('dynamodb')
-        gauge_table = dynamodb.Table('FloodGaugeReadings')
-        weather_table = dynamodb.Table('WeatherObservations')
-        
-        # Delete demo records
-        gauge_table.delete_item(
-            Key={
-                'gauge_id': '01646500',
-                'timestamp': timestamp
-            }
-        )
-        
-        weather_table.delete_item(
-            Key={
-                'station_id': 'KDCA',
-                'timestamp': timestamp
-            }
-        )
-        
-        print("Demo data cleaned up")
-        return True
-        
-    except Exception as e:
-        print(f"Error cleaning up demo data: {e}")
-        return False

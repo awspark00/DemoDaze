@@ -118,29 +118,59 @@ def create_features(usgs_data, noaa_data):
 def predict_flood_probability(usgs_data, noaa_data):
     """Predict flood probability using ML model or threshold"""
     
+    print(f"=== PREDICTION DEBUG START ===")
+    print(f"USGS data count: {len(usgs_data)}")
+    print(f"NOAA data count: {len(noaa_data)}")
+    
     flood_model, features = load_model()
+    print(f"Model type: {flood_model}")
     
     if flood_model == "threshold":
         # Simple threshold-based prediction as fallback
         if usgs_data:
+            print(f"Processing {len(usgs_data)} USGS records")
+            
+            # Debug: print all USGS data
+            for idx, record in enumerate(usgs_data):
+                print(f"USGS Record {idx}: {json.dumps(record, default=str)}")
+            
             latest_usgs = sorted(usgs_data, key=lambda x: x['timestamp'])[-1]
+            print(f"Latest USGS record: {json.dumps(latest_usgs, default=str)}")
+            
             water_level = float(latest_usgs.get('water_level', 5.0))
             flood_stage = float(latest_usgs.get('flood_stage', 10.0))
             
+            print(f"Threshold mode - Water level: {water_level} feet, Flood stage: {flood_stage} feet")
+            
             # Simple probability based on proximity to flood stage
             ratio = water_level / flood_stage
+            print(f"Ratio: {ratio:.2%} ({ratio})")
+            
             if ratio > 0.9:
-                return 0.8  # High probability
+                probability = 0.8  # High probability
+                print(f"Ratio > 0.9, setting probability to 0.8")
             elif ratio > 0.7:
-                return 0.4  # Medium probability
+                probability = 0.4  # Medium probability
+                print(f"Ratio > 0.7, setting probability to 0.4")
             else:
-                return 0.1  # Low probability
+                probability = 0.1  # Low probability
+                print(f"Ratio <= 0.7, setting probability to 0.1")
+            
+            print(f"Calculated probability: {probability:.1%} ({probability})")
+            print(f"=== PREDICTION DEBUG END ===")
+            return probability
         else:
+            print("No USGS data available - returning default 10% probability")
+            print(f"=== PREDICTION DEBUG END ===")
             return 0.1
     else:
         # Use ML model
+        print("Using ML model for prediction")
         feature_vector = create_features(usgs_data, noaa_data)
-        return flood_model.predict(feature_vector)[0]
+        result = flood_model.predict(feature_vector)[0]
+        print(f"ML model prediction: {result}")
+        print(f"=== PREDICTION DEBUG END ===")
+        return result
 
 def lambda_handler(event, context):
     """ML-powered flood prediction"""
@@ -200,10 +230,27 @@ def lambda_handler(event, context):
             }
         
         # Normal mode - get recent data
+        print("=== LAMBDA HANDLER DEBUG START ===")
+        print("Fetching recent data from DynamoDB...")
         usgs_data, noaa_data = get_recent_data()
         
+        print(f"Retrieved {len(usgs_data)} USGS records and {len(noaa_data)} NOAA records")
+        
+        # Debug: Show what data we got
+        if usgs_data:
+            print(f"USGS data sample (first record): {json.dumps(usgs_data[0], default=str)}")
+        else:
+            print("WARNING: No USGS data retrieved from DynamoDB")
+            
+        if noaa_data:
+            print(f"NOAA data sample (first record): {json.dumps(noaa_data[0], default=str)}")
+        else:
+            print("WARNING: No NOAA data retrieved from DynamoDB")
+        
         # Make prediction
+        print("Calling predict_flood_probability...")
         flood_probability = predict_flood_probability(usgs_data, noaa_data)
+        print(f"Prediction result: {flood_probability}")
         
         # Get account ID for SNS topics
         sts = boto3.client('sts')

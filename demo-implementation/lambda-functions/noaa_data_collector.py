@@ -52,9 +52,9 @@ def lambda_handler(event, context):
                 # Get forecast data (simplified - would need gridpoint lookup)
                 forecast_precip_24hr = 0.0  # Would fetch from forecast API
                 
-                # Calculate TTL (14 days from now - optimized for fast collection)
+                # Calculate TTL (2 days from now)
                 import time
-                ttl = int(time.time()) + (14 * 24 * 60 * 60)  # 14 days in seconds
+                ttl = int(time.time()) + (2 * 24 * 60 * 60)  # 2 days in seconds
                 
                 # Store observation
                 table.put_item(Item={
@@ -99,9 +99,9 @@ def lambda_handler(event, context):
             alerts_data = response.json()
             active_warnings = len(alerts_data.get('features', []))
             
-            # Calculate TTL (14 days from now - optimized for fast collection)
+            # Calculate TTL (2 days from now)
             import time
-            ttl = int(time.time()) + (14 * 24 * 60 * 60)  # 14 days in seconds
+            ttl = int(time.time()) + (2 * 24 * 60 * 60)  # 2 days in seconds
             
             # Store alert status
             table.put_item(Item={
