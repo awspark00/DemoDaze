@@ -153,3 +153,52 @@ After deployment, the system provides:
 **Note:** The system monitors 3 USGS gauges - 2 on the Potomac River and 1 on the Patuxent River (a separate river system flowing to Chesapeake Bay). This demonstrates multi-watershed monitoring capabilities for the DC Metro region.
 
 **Perfect for demonstrating federal technology modernization and inter-agency collaboration capabilities.**
+
+---
+
+## 🎬 Demo Mode - Trigger Workflow
+
+The system includes a built-in demo trigger that forces the complete workflow to execute and send email alerts, perfect for live demonstrations.
+
+### Quick Demo Trigger
+
+**Option 1: Use the Demo Lambda (Deployed with CloudFormation)**
+```bash
+aws lambda invoke \
+    --function-name DemoWorkflowTrigger \
+    --payload '{}' \
+    response.json && cat response.json
+```
+
+**Option 2: Run the Python Script**
+```bash
+cd demo-implementation/testing
+python trigger-demo-workflow.py
+```
+
+### What the Demo Does
+
+1. **Injects simulated high water level data** (8.5 feet - 85% of flood stage)
+2. **Triggers the ML Flood Predictor** to analyze conditions
+3. **Sends a WARNING email alert** to your subscribed address
+4. **Shows complete end-to-end workflow** in ~5 seconds
+
+### Expected Results
+
+- **Email Alert**: WARNING level flood notification
+- **Flood Probability**: 40% (based on 85% of flood stage)
+- **Alert Message**: "WARNING: ML model predicts 40.0% flood probability in next 6 hours"
+
+### Demo Scenarios
+
+The demo trigger supports different alert levels:
+
+| Water Level | Alert Level | Probability | Use Case |
+|-------------|-------------|-------------|----------|
+| 8.5 feet    | WARNING     | 40%         | Default demo |
+| 9.5 feet    | EMERGENCY   | 80%         | Critical scenario |
+| 7.5 feet    | WARNING     | 40%         | Watch scenario |
+
+For detailed instructions, see [`demo-implementation/testing/TRIGGER_DEMO_GUIDE.md`](demo-implementation/testing/TRIGGER_DEMO_GUIDE.md)
+
+**Perfect for live demonstrations - shows the complete workflow without waiting for real flood conditions!**
