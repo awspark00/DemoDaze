@@ -20,15 +20,24 @@ def lambda_handler(event, context):
     table = dynamodb.Table('WeatherObservations')
     
     records_processed = 0
+    errors = []
     
     for station in stations:
         try:
             # Get current observations
             obs_url = f"https://api.weather.gov/stations/{station}/observations/latest"
-            response = requests.get(obs_url, timeout=30)
+            response = requests.get(obs_url, timeout=30, headers={'User-Agent': 'FloodMonitoringSystem/1.0'})
             
             if response.status_code == 200:
                 data = response.json()
+                
+                # Validate response structure
+                if 'properties' not in data:
+                    error_msg = f"Station {station}: Unexpected API response structure"
+                    print(error_msg)
+                    errors.append(error_msg)
+                    continue
+                
                 properties = data['properties']
                 
                 # Extract precipitation data
@@ -59,9 +68,25 @@ def lambda_handler(event, context):
                 })
                 
                 records_processed += 1
+            else:
+                error_msg = f"Station {station}: HTTP {response.status_code}"
+                print(error_msg)
+                errors.append(error_msg)
                 
+        except requests.exceptions.Timeout:
+            error_msg = f"Station {station}: Request timeout"
+            print(error_msg)
+            errors.append(error_msg)
+            continue
+        except requests.exceptions.RequestException as req_err:
+            error_msg = f"Station {station}: Request failed - {str(req_err)}"
+            print(error_msg)
+            errors.append(error_msg)
+            continue
         except Exception as e:
-            print(f"Error processing station {station}: {str(e)}")
+            error_msg = f"Station {station}: Processing error - {str(e)}"
+            print(error_msg)
+            errors.append(error_msg)
             continue
     
     # Also check for active flood warnings
@@ -94,6 +119,7 @@ def lambda_handler(event, context):
         'statusCode': 200,
         'body': json.dumps({
             'message': 'NOAA data processed successfully',
-            'records_processed': records_processed
+            'records_processed': records_processed,
+            'errors': errors if errors else None
         })
     }
