@@ -1,0 +1,67 @@
+{
+  "description": "Test data for live demo - copy/paste into DynamoDB",
+  
+  "emergency_water_level": {
+    "description": "Creates EMERGENCY alert (80% probability) - water at 95% of flood stage",
+    "use_for": "Main demo - guaranteed email",
+    "paste_into": "DynamoDB > FloodGaugeReadings > Create item > JSON view",
+    "data": {
+      "gauge_id": "01646500",
+      "timestamp": "2024-01-29T15:00:00Z",
+      "water_level": 9.5,
+      "flood_stage": 10.0,
+      "location_name": "DEMO - POTOMAC RIVER AT CHAIN BRIDGE",
+      "trend": "rising",
+      "ttl": 1738252800
+    }
+  },
+  
+  "warning_water_level": {
+    "description": "Creates WARNING alert (40% probability) - water at 78% of flood stage",
+    "use_for": "Alternative demo scenario",
+    "paste_into": "DynamoDB > FloodGaugeReadings > Create item > JSON view",
+    "data": {
+      "gauge_id": "01646500",
+      "timestamp": "2024-01-29T15:00:00Z",
+      "water_level": 7.8,
+      "flood_stage": 10.0,
+      "location_name": "DEMO - POTOMAC RIVER AT CHAIN BRIDGE",
+      "trend": "rising",
+      "ttl": 1738252800
+    }
+  },
+  
+  "watch_water_level": {
+    "description": "Creates WATCH alert (40% probability) - water at 72% of flood stage",
+    "use_for": "Show escalating alerts",
+    "paste_into": "DynamoDB > FloodGaugeReadings > Create item > JSON view",
+    "data": {
+      "gauge_id": "01646500",
+      "timestamp": "2024-01-29T15:00:00Z",
+      "water_level": 7.2,
+      "flood_stage": 10.0,
+      "location_name": "DEMO - POTOMAC RIVER AT CHAIN BRIDGE",
+      "trend": "rising",
+      "ttl": 1738252800
+    }
+  },
+  
+  "lambda_test_event": {
+    "description": "Test event for all Lambda functions",
+    "use_for": "Lambda console Test tab",
+    "paste_into": "Lambda > Test tab > Event JSON",
+    "data": {}
+  },
+  
+  "instructions": {
+    "step1": "Copy the 'data' object from emergency_water_level above",
+    "step2": "Go to DynamoDB > FloodGaugeReadings > Create item",
+    "step3": "Switch to JSON view",
+    "step4": "Paste the data",
+    "step5": "Click Create item",
+    "step6": "Go to Lambda > ml-flood-predictor > Test",
+    "step7": "Use empty {} as test event",
+    "step8": "Click Test",
+    "step9": "Check your email!"
+  }
+}

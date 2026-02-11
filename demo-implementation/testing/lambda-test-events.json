@@ -1,0 +1,32 @@
+{
+  "test_events": {
+    "usgs_data_collector": {
+      "description": "Test USGS data collection - no input needed",
+      "event": {}
+    },
+    "noaa_data_collector": {
+      "description": "Test NOAA weather collection - no input needed",
+      "event": {}
+    },
+    "ml_flood_predictor": {
+      "description": "Test ML flood prediction - no input needed",
+      "event": {}
+    },
+    "ml_flood_predictor_force_test": {
+      "description": "Force test mode (if you add test logic)",
+      "event": {
+        "test_mode": true,
+        "force_high_water": true
+      }
+    }
+  },
+  "instructions": {
+    "step1": "Go to AWS Lambda Console",
+    "step2": "Select your Lambda function",
+    "step3": "Click 'Test' tab",
+    "step4": "Create new test event",
+    "step5": "Paste the empty {} event",
+    "step6": "Click 'Test' button",
+    "step7": "Check execution results and logs"
+  }
+}

@@ -1,0 +1,101 @@
+[
+  {
+    "PolicyName": "DenyRootUserAccess",
+    "Description": "Prevents any action by the AWS Account Root User.",
+    "PolicyDocument": {
+      "Version": "2012-10-17",
+      "Id": "DenyRoot",
+      "Statement": [
+        {
+          "Sid": "DenyRoot",
+          "Effect": "Deny",
+          "Action": "*",
+          "Resource": "*",
+          "Condition": {
+            "StringEquals": {
+              "aws:PrincipalArn": "arn:aws:iam::*:root"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "PolicyName": "DenyUnapprovedRegions",
+    "Description": "Denies all actions in all regions except for us-east-1 and us-west-2.",
+    "PolicyDocument": {
+      "Version": "2012-10-17",
+      "Id": "DenyUnapprovedRegions",
+      "Statement": [
+        {
+          "Sid": "DenyAllExceptApprovedRegions",
+          "Effect": "Deny",
+          "Action": [
+            "*"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "StringNotEquals": {
+              "aws:RequestedRegion": [
+                "us-east-1",
+                "us-west-2"
+              ]
+            },
+            "StringNotEquals": {
+              "aws:PrincipalServiceName": "s3.amazonaws.com"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "PolicyName": "EnforceIMDSv2",
+    "Description": "Ensures all new EC2 instances are launched requiring the secure Instance Metadata Service Version 2 (IMDSv2).",
+    "PolicyDocument": {
+      "Version": "2012-10-17",
+      "Id": "RequireIMDSv2",
+      "Statement": [
+        {
+          "Sid": "RequireIMDSv2",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:RunInstances"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "StringNotEquals": {
+              "ec2:MetadataHttpTokens": "required"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "PolicyName": "AllowListBaseline",
+    "Description": "Implements an 'Allow-list' strategy by explicitly denying all actions on all services except for core approved services (s3, ec2, iam, route53).",
+    "PolicyDocument": {
+      "Version": "2012-10-17",
+      "Id": "AllowListBaseline",
+      "Statement": [
+        {
+          "Sid": "DenyAllServicesExceptApproved",
+          "Effect": "Deny",
+          "NotAction": [
+            "s3:*",
+            "ec2:*",
+            "iam:*",
+            "route53:*"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "StringNotEquals": {
+              "aws:PrincipalServiceName": "organizations.amazonaws.com"
+            }
+          }
+        }
+      ]
+    }
+  }
+]

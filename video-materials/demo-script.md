@@ -1,205 +1,247 @@
-# Geospatial Monitoring Demo Technical Script
+# Federal Flood Monitoring System - Demo Script
+## Real-Time Inter-Agency Data Integration with AI/ML Predictions
 
-## Pre-Demo Setup Checklist
-- [ ] AWS Console access configured for geospatial services
-- [ ] Access to public satellite data buckets (Landsat, Sentinel)
-- [ ] Demo processed imagery loaded in S3 buckets (s3://demo-geospatial-results/)
-- [ ] CloudWatch dashboards configured for monitoring
-- [ ] Mobile demo app installed and tested on tablet
-- [ ] SageMaker models deployed and endpoints ready
-- [ ] Sample wildfire detection results prepared
-- [ ] Backup slides ready for connectivity issues
+---
 
-## Technical Prerequisites
+## Demo Overview (30 seconds)
+**"Today I'm demonstrating a federal flood monitoring system that integrates real-time data from USGS and NOAA to provide AI-powered flood predictions with 6-hour advance warning. This system has been running continuously for over 2 weeks, collecting data every 15-20 minutes and generating ML predictions every 2 hours."**
 
-### AWS Services Setup
-```bash
-# Check public satellite data access
-aws s3 ls s3://landsat-pds/ --no-sign-request
-aws s3 ls s3://sentinel-s2-l2a/ --no-sign-request
+---
 
-# Check SageMaker endpoint status
-aws sagemaker describe-endpoint --endpoint-name wildfire-detection-endpoint
-aws sagemaker describe-endpoint --endpoint-name change-detection-endpoint
+## Part 1: Architecture Overview (2 minutes)
 
-# Verify batch job queue
-aws batch describe-job-queues --job-queues satellite-processing-queue
+### Show: Architecture Diagram
+**"Let me start with the system architecture. This demonstrates modern inter-agency collaboration between USGS and NOAA through AWS cloud services."**
 
-# Check demo S3 buckets
-aws s3 ls s3://demo-geospatial-processed-data/
-aws s3 ls s3://demo-geospatial-results/
+**Key Points to Highlight:**
+- **Data Sources**: USGS stream gauges + NOAA weather stations
+- **Serverless Architecture**: Lambda functions, DynamoDB, EventBridge automation
+- **ML Pipeline**: SageMaker training → S3 model storage → Lambda predictions
+- **Alerting**: SNS topics for graduated flood warnings
+- **Cost**: $25/month vs $48,000 traditional systems (99% reduction)
 
-# Verify Step Functions state machine
-aws stepfunctions list-state-machines --query 'stateMachines[?contains(name, `geospatial`)]'
-```
+---
 
-## Live Demo Flow (30 minutes)
+## Part 2: Live Data Collection - USGS Lambda (3 minutes)
 
-### 1. Data Lake and Public Satellite Data (6 minutes)
-**Talking Points**: "Federal agencies need access to massive amounts of satellite data. AWS provides access to petabytes of public satellite data and makes it easy to integrate with your own sensors..."
+### Show: AWS Lambda Console → usgs-data-collector
+**"First, let's look at our USGS data collection. This Lambda function runs every 15 minutes to collect stream gauge data from the Potomac River basin."**
 
-**Actions**:
-- Open S3 console showing Landsat and Sentinel public datasets
-- Display data organization and metadata structure
-- Show Lambda function triggered by new data arrivals
-- Demonstrate data catalog with AWS Glue
-- Show cost optimization with S3 storage classes
+#### Demo Steps:
+1. **Open Lambda Function**: Show `usgs-data-collector` function
+2. **Show Code**: Highlight key sections:
+   - API endpoint: `https://waterservices.usgs.gov/nwis/iv/`
+   - Three Potomac gauges: `01646500,01594440,01638500`
+   - Real-time water level collection
+3. **Show Recent Executions**: CloudWatch logs showing successful runs
+4. **Test Function**: Click "Test" to run live data collection
+5. **Show Output**: Display successful API response and records processed
 
-**Script**: 
-"AWS hosts petabytes of public satellite data from Landsat, Sentinel, and other sources - completely free to access. This eliminates the need to build expensive ground infrastructure or negotiate data licenses. When new imagery arrives, Lambda functions automatically trigger our processing pipeline. The data is organized by date, location, and sensor type, making it easy to find exactly what you need."
+**Talking Points:**
+- "This connects to live USGS APIs - no mock data"
+- "Collecting from 3 strategic Potomac River monitoring points"
+- "Each run processes ~99 water level readings"
 
-**Key Metrics to Highlight**:
-- Data availability: Petabytes of free public satellite data
-- Coverage: Global coverage updated daily
-- Cost savings: $0 for data access vs. traditional licensing
-- Processing trigger: Automatic Lambda functions on new data
+---
 
-### 2. Automated Processing Pipeline (8 minutes)
-**Talking Points**: "Raw satellite data needs preprocessing before analysis. Our automated pipeline handles this at massive scale..."
+## Part 3: Live Data Collection - NOAA Lambda (2 minutes)
 
-**Actions**:
-- Open AWS Batch console showing active jobs
-- Display Step Functions workflow execution
-- Show EMR cluster auto-scaling for peak loads
-- Monitor CloudWatch metrics for processing throughput
+### Show: AWS Lambda Console → noaa-data-collector
+**"Next is our NOAA weather data collection, running every 20 minutes to gather precipitation and temperature data from DC area weather stations."**
 
-**Script**:
-"When new imagery arrives, Step Functions automatically triggers our processing pipeline. AWS Batch spins up hundreds of containers to preprocess the data - atmospheric correction, geometric correction, and cloud masking. The EMR cluster handles the heavy computational work, auto-scaling from 10 to 500 nodes based on demand. What used to take days now completes in under an hour."
+#### Demo Steps:
+1. **Open Lambda Function**: Show `noaa-data-collector` function
+2. **Show Code**: Highlight:
+   - Weather stations: `KDCA, KIAD, KADW`
+   - Precipitation data conversion (mm to inches)
+   - Temperature readings
+3. **Test Function**: Run live collection
+4. **Show Output**: Weather data successfully collected
 
-**Key Metrics to Highlight**:
-- Processing speed: 10x faster than traditional systems
-- Auto-scaling: 10-500 compute nodes based on demand
-- Cost optimization: 70% savings with Spot instances
-- Throughput: 50TB processed daily
+**Talking Points:**
+- "Real NOAA weather API integration"
+- "DC metro area coverage for comprehensive weather context"
+- "Precipitation is key input for flood prediction models"
 
-### 3. AI-Powered Change Detection (8 minutes)
-**Talking Points**: "Manual analysis of satellite imagery takes weeks and misses critical events. Our AI models detect changes in real-time..."
+---
 
-**Actions**:
-- Open SageMaker console showing model endpoints
-- Display batch transform job processing imagery
-- Show Rekognition Custom Labels detecting features
-- Demonstrate change detection algorithm results
-- Show confidence scores and accuracy metrics
+## Part 4: Data Storage - DynamoDB Tables (3 minutes)
 
-**Script**:
-"Our SageMaker models analyze each image for environmental changes. This wildfire detection model has 95% accuracy with minimal false positives. The change detection algorithm compares current imagery with historical baselines, identifying deforestation, urban expansion, or natural disasters. Red polygons show areas requiring immediate field team attention."
+### Show: DynamoDB Console
+**"All this real-time data flows into DynamoDB tables optimized for time-series analysis and cost control."**
 
-**Key Metrics to Highlight**:
-- Detection accuracy: 95% for wildfire detection
-- Processing time: 15 minutes from satellite to alert
-- False positive rate: <2%
-- Coverage: All 2.3 billion acres monitored continuously
+#### Demo Steps:
+1. **FloodGaugeReadings Table**:
+   - Show table structure (gauge_id, timestamp, water_level, flood_stage)
+   - **Scan/Query**: Display recent USGS readings
+   - **Highlight TTL**: Point out 14-day auto-expiration for cost optimization
+   - **Show Volume**: "~9,500 readings per day from continuous collection"
 
-### 4. Real-Time Emergency Response (5 minutes)
-**Talking Points**: "When critical events are detected, every minute counts for emergency response..."
+2. **WeatherObservations Table**:
+   - Show table structure (station_id, timestamp, precipitation, temperature)
+   - **Display Recent Data**: NOAA weather readings
+   - **Show Integration**: How weather correlates with water levels
 
-**Actions**:
-- Trigger simulated wildfire detection
-- Show SNS notification distribution
-- Display mobile app receiving alert on tablet
-- Show incident response workflow dashboard
-- Demonstrate inter-agency coordination features
+**Talking Points:**
+- "2+ weeks of continuous data collection"
+- "14-day TTL maintains ~2,352 records for ML training"
+- "Cost-optimized: Pay only for what we use"
 
-**Script**:
-"The system just detected a potential wildfire in Colorado. SNS immediately distributes alerts to field teams, emergency responders, and partner agencies via SMS, email, and mobile push notifications. The mobile app shows GPS coordinates, severity assessment, and recommended response actions. Notice how the alert reaches all stakeholders within 30 seconds of detection."
+---
 
-**Key Metrics to Highlight**:
-- Alert speed: 30 seconds from detection to notification
-- Multi-channel delivery: SMS, email, mobile app, API
-- Stakeholder reach: Federal, state, local agencies
-- Response coordination: Automated incident workflows
+## Part 5: Machine Learning Pipeline - SageMaker (4 minutes)
 
-### 5. Field Team Mobile Integration (3 minutes)
-**Talking Points**: "Field teams operate in remote areas with limited connectivity. Our mobile solution works offline and syncs when connected..."
+### Show: SageMaker Console → Notebook Instance
+**"The heart of our predictive capability is this SageMaker notebook that trains machine learning models on the collected data."**
 
-**Actions**:
-- Open mobile app on tablet in airplane mode
-- Show offline map capabilities with cached satellite data
-- Display real-time sensor data integration
-- Demonstrate photo upload for ground truth validation
-- Show GPS tracking and team coordination
+#### Demo Steps:
+1. **Open Notebook Instance**: `flood-prediction-notebook`
+2. **Launch Jupyter**: Open the ML notebook
+3. **Walk Through Key Cells**:
+   - **Data Loading**: Show connection to DynamoDB tables
+   - **Data Exploration**: Display visualizations of water levels and weather
+   - **Feature Engineering**: Highlight lag variables, precipitation cumulative
+   - **Model Training**: Random Forest classifier for flood probability
+   - **Model Evaluation**: Show accuracy metrics and feature importance
+   - **Model Export**: Demonstrate saving to S3
 
-**Script**:
-"Field teams can access satellite data even without internet connectivity. Offline maps include the latest imagery and sensor data. Teams can upload ground photos that help validate and improve our ML models. GPS tracking ensures team safety in remote areas and enables real-time coordination between multiple field units."
+**Talking Points:**
+- "Real data from our DynamoDB tables - not synthetic"
+- "Model learns patterns from 2+ weeks of continuous collection"
+- "Predicts flood probability 6 hours in advance"
+- "Automatically exports trained model for Lambda deployment"
 
-## Advanced Demo Extensions (If Time Permits)
+---
 
-### Historical Analysis & Climate Research
-**Actions**:
-- Open Amazon Athena query console
-- Run SQL query on 20 years of satellite data
-- Display QuickSight dashboard with trend analysis
-- Show automated climate report generation
+## Part 6: Model Storage - S3 Bucket (1 minute)
 
-**Script**:
-"Scientists can query 20 years of satellite data in seconds using Athena. This analysis shows forest cover changes over time, supporting climate research and policy decisions. Automated reports help agencies meet regulatory requirements and inform land management strategies."
+### Show: S3 Console → flood-prediction-models bucket
+**"The trained model gets stored in S3 where our prediction Lambda can access it."**
 
-### Cost Optimization Deep Dive
-**Actions**:
-- Open AWS Cost Explorer
-- Show S3 Intelligent Tiering savings
-- Display Spot instance cost reductions
-- Demonstrate Reserved Instance recommendations
+#### Demo Steps:
+1. **Navigate to S3 Bucket**: `flood-prediction-models-730335508148`
+2. **Show Models Folder**: Display exported ML models
+3. **Show File Details**: `flood_prediction_model.joblib` and `model_features.json`
 
-**Script**:
-"S3 Intelligent Tiering automatically moves older data to cheaper storage classes, saving 60% on storage costs. Spot instances reduce compute costs by 70% for batch processing. The total solution costs 75% less than traditional on-premises infrastructure while providing 10x better performance."
+**Talking Points:**
+- "Versioned model storage for production deployment"
+- "Lambda downloads model on-demand for predictions"
 
-## Troubleshooting Guide
+---
 
-### Common Demo Issues and Solutions
+## Part 7: ML Predictions - ML Lambda (3 minutes)
 
-#### Technical Issues
-- **Public data access issues**: 
-  - Use pre-downloaded sample imagery
-  - Show cached results from previous processing
-  - Explain data availability and access patterns
+### Show: AWS Lambda Console → ml-flood-predictor
+**"This is where everything comes together - our ML prediction Lambda that analyzes current conditions and generates flood probability forecasts."**
 
-- **SageMaker endpoint unavailable**: 
-  - Have pre-processed ML results ready
-  - Show model training metrics and accuracy
-  - Demonstrate batch inference capabilities
+#### Demo Steps:
+1. **Open Lambda Function**: Show `ml-flood-predictor` function
+2. **Show Code Logic**:
+   - Model loading from S3
+   - Recent data retrieval from DynamoDB
+   - Feature engineering for prediction
+   - Probability calculation and alert level determination
+3. **Test Function**: Run live ML prediction
+4. **Show Output**: 
+   - Current flood probability percentage
+   - Alert level (Normal/Watch/Warning/Emergency)
+   - Timestamp and reasoning
 
-- **Mobile app connectivity issues**: 
-  - Use device hotspot or demo mode
-  - Show offline capabilities with cached data
-  - Demonstrate sync process when connectivity returns
+**Talking Points:**
+- "Runs every 2 hours for continuous monitoring"
+- "Uses real-time data + trained ML model"
+- "Generates probabilistic forecasts, not just thresholds"
 
-- **Real-time data not flowing**:
-  - Switch to simulated data streams
-  - Use CloudWatch metrics from previous runs
-  - Explain data flow with architecture diagrams
+---
 
-#### Presentation Issues
-- **AWS Console slow/unresponsive**:
-  - Switch to backup screenshots
-  - Use pre-recorded demo videos
-  - Focus on architecture and business value
+## Part 8: Automated Alerting - SNS Integration (2 minutes)
 
-- **Network connectivity problems**:
-  - Use offline presentation mode
-  - Show static dashboards and reports
-  - Emphasize cost savings and ROI analysis
+### Show: SNS Console
+**"Based on the ML predictions, the system automatically sends graduated alerts through SNS topics."**
 
-### Backup Materials Checklist
-- [ ] Static screenshots of all AWS consoles
-- [ ] Pre-recorded videos of key workflows (5-10 minutes each)
-- [ ] Architecture diagrams in high-resolution PDF
-- [ ] Cost analysis spreadsheets with calculations
-- [ ] Sample satellite imagery and analysis results
-- [ ] Mobile app screenshots and feature demos
-- [ ] Customer testimonials and case studies
+#### Demo Steps:
+1. **Show SNS Topics**:
+   - `flood-alerts-emergency` (>80% probability)
+   - `flood-alerts-warning` (>50% probability)  
+   - `flood-alerts-watch` (>20% probability)
+2. **Show Subscriptions**: Email endpoints configured
+3. **Show Recent Messages**: Historical alert deliveries (don't send new ones)
 
-### Demo Recovery Strategies
-1. **Technical failure**: Pivot to business value discussion and ROI analysis
-2. **Partial connectivity**: Use hybrid approach with live and recorded content
-3. **Complete system down**: Focus on architecture, use cases, and implementation roadmap
-4. **Time constraints**: Prioritize wildfire detection and cost savings
-5. **Audience questions**: Have detailed technical answers and reference materials ready
+**Talking Points:**
+- "Graduated response based on ML confidence levels"
+- "Automatic escalation ensures appropriate emergency response"
+- "Email alerts to emergency management personnel"
 
-## Post-Demo Follow-Up
-- Provide demo recording and technical documentation
-- Schedule technical deep-dive sessions for interested stakeholders
-- Share cost analysis and ROI projections
-- Offer proof-of-concept development proposal
-- Connect with AWS federal specialists for next steps
+---
+
+## Part 9: System Monitoring - CloudWatch Dashboard (2 minutes)
+
+### Show: CloudWatch Console → FloodMonitoringFull Dashboard
+**"Finally, let's look at our operational monitoring dashboard that shows the system's health and performance."**
+
+#### Demo Steps:
+1. **Open Dashboard**: Show comprehensive metrics
+2. **Highlight Key Widgets**:
+   - Lambda invocation counts (data collection frequency)
+   - Function performance and duration
+   - Error rates (should be near zero)
+   - DynamoDB usage patterns
+3. **Show Time Range**: 2+ weeks of continuous operation
+
+**Talking Points:**
+- "System has been running reliably for 2+ weeks"
+- "~168 data collections per day"
+- "12 ML predictions per day"
+- "Near-zero error rates demonstrate production readiness"
+
+---
+
+## Part 10: Deployment Capability (1 minute)
+
+### Show: CloudFormation Template
+**"The entire system can be replicated in any AWS account with a single CloudFormation command."**
+
+#### Demo Steps:
+1. **Show Template File**: `flood-monitoring-infrastructure.yaml`
+2. **Highlight Key Sections**: Parameters, resources, outputs
+3. **Show Deployment Command**: One-click deployment example
+
+**Talking Points:**
+- "Complete infrastructure as code"
+- "5-10 minute deployment in fresh AWS accounts"
+- "Enables rapid scaling to other regions or watersheds"
+
+---
+
+## Closing Summary (1 minute)
+
+**"This demonstration shows how federal agencies can modernize emergency management through:**
+- **Real inter-agency data integration** (USGS + NOAA)
+- **AI/ML predictive capabilities** (6-hour advance warnings)
+- **99% cost reduction** ($48K → $25/month)
+- **Production-ready reliability** (2+ weeks continuous operation)
+- **Rapid replication** (one-click CloudFormation deployment)
+
+**This represents the future of federal technology collaboration - agencies working together with modern cloud and AI capabilities to enhance public safety while dramatically reducing costs."**
+
+---
+
+## Technical Demo Tips
+
+### Screen Recording Setup:
+- **Resolution**: 1920x1080 for clarity
+- **Browser Zoom**: 125% for visibility
+- **Multiple Tabs**: Pre-open all AWS console tabs
+- **Test Run**: Practice transitions between services
+
+### Demo Flow Optimization:
+- **Start with Architecture**: Set context first
+- **Follow Data Flow**: USGS → NOAA → DynamoDB → ML → Alerts
+- **Show Real Data**: Emphasize live APIs and actual results
+- **Highlight Innovation**: Inter-agency collaboration + AI/ML
+- **End with Impact**: Cost savings and replication capability
+
+### Backup Plans:
+- **Screenshots**: Have key screens captured in case of connectivity issues
+- **Test Data**: Ensure recent data exists in all tables
+- **Function Tests**: Verify Lambdas work before recording

@@ -58,8 +58,11 @@ Follow the complete guide in `demo-implementation/documentation/deployment-guide
 ## ✅ System Capabilities
 
 **🌊 Real-Time Data Integration:**
-- USGS stream gauge monitoring (Potomac River basin)
-- NOAA weather station data (DC metro area)
+- USGS stream gauge monitoring (DC Metro Area rivers)
+  - Potomac River at Little Falls (near Washington, DC)
+  - Potomac River at Point of Rocks, MD
+  - Patuxent River near Bowie, MD
+- NOAA weather station data (DC metro area - KDCA, KIAD, KADW)
 - Automated data collection every 15-20 minutes
 
 **🤖 AI/ML Predictions:**
@@ -114,7 +117,8 @@ This system demonstrates:
 
 ### Operational Excellence
 - **Warning Lead Time**: 6-hour advance flood predictions
-- **Coverage**: Real-time monitoring of multiple data sources
+- **Coverage**: Real-time monitoring of 3 USGS stream gauges + 3 NOAA weather stations
+- **Geographic Scope**: DC Metro Area (Potomac River basin + Patuxent River)
 - **Accuracy**: ML-powered predictions vs simple thresholds
 - **Availability**: 99.9% uptime for critical systems
 
@@ -140,10 +144,12 @@ This system demonstrates:
 ## 🎉 Success Criteria
 
 After deployment, the system provides:
-- ✅ Real-time flood monitoring for Potomac River basin
+- ✅ Real-time flood monitoring for DC Metro Area rivers (Potomac & Patuxent)
 - ✅ 6-hour advance flood probability predictions
 - ✅ Automated email alerts for emergency management
 - ✅ Cost-effective, scalable infrastructure
 - ✅ Professional monitoring and operational dashboards
+
+**Note:** The system monitors 3 USGS gauges - 2 on the Potomac River and 1 on the Patuxent River (a separate river system flowing to Chesapeake Bay). This demonstrates multi-watershed monitoring capabilities for the DC Metro region.
 
 **Perfect for demonstrating federal technology modernization and inter-agency collaboration capabilities.**
